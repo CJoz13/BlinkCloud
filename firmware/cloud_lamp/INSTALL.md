@@ -142,3 +142,4 @@ Steps 1–3 are already done. For the other lamp you only need to:
 | Clock works, `MQTT connect failed` in Serial | Wrong MQTT username/password, or that HiveMQ account isn't set up. |
 | LED ring never lights, everything else works | Wiring to the ring (power, ground, or data). Not a software problem. |
 | Upload error `A fatal error occurred: Failed to connect` | Hold **BOOT** during upload; try Upload Speed 115200; try another cable. |
+| Clock froze / lamp rebooted itself after WiFi was down a long time | Expected, not a bug: if WiFi stays disconnected for 3+ hours straight, the lamp reboots itself on purpose to clear out a known ESP32 WiFi-driver issue where very long retry loops (days) can stop reconnecting even after the network comes back. It'll rejoin normally as soon as WiFi is reachable again. |

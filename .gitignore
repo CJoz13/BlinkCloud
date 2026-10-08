@@ -1,0 +1,18 @@
+firmware/**/secrets.h
+firmware/**/*.zip
+build/
+.pio/
+*.hex
+.DS_Store
+__MACOSX/
+kuticket.pdf
+*.xlsx
+CLAUDE.md
+*.zip
+# Enclosure CAD stays private
+*.stl
+*.scad
+cloud_lamp_control_box_v2_exact_specs_files/
+cloud_lamp_final_front_screen_top_led_CAD/
+# Original full-size photos
+firmware/**/*.JPG

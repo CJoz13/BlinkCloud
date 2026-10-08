@@ -4,11 +4,11 @@
 // NeoPixel ring. When idle, the ring acts as a 24-hour sun/moon dial showing
 // what time it currently is at the OTHER lamp (each of the 24 LEDs = 1 hour).
 //
-// Not yet implemented (see CLAUDE.md for the full planned feature set):
+// Not yet implemented (see README.md "Status"):
 // weather-driven modes, BLE presence, missed-blink backlog, multi-button UI,
 // captive-portal wifi login.
 //
-// Wiring (see CLAUDE.md "Pin mapping" for the full table):
+// Wiring (see README.md "Signal wiring" for the full table):
 //   TFT:   CLK18 MISO19 MOSI23 CS15 DC2 RST4 (hardware VSPI)
 //   Touch: X+32 Y+33 X-21 Y-22
 //   LED:   GPIO13 -> 330ohm resistor -> NeoPixel ring DIN (24x RGBW)
@@ -64,6 +64,14 @@ static const uint32_t BLINK_ANIM_DURATION_MS      = 1600;
 static const uint32_t HOLIDAY_BLINK_DURATION_MS   = 5000; // themed holiday blink runs longer
 static const uint32_t LOVE_MSG_DURATION_MS        = 8000; // "I love you" hold on the TFT
 static const uint32_t OTHER_STATUS_STALE_MS       = 5UL * 60UL * 1000UL;
+
+// If the WiFi AP is down for days straight, the ESP32's WiFi driver can wedge
+// into a state where plain WiFi.begin() retries never rejoin even once the AP
+// is back (seen reconnecting lamp2 to its open network after a multi-day
+// outage). These two thresholds self-heal that without affecting normal,
+// short reconnects:
+static const uint32_t WIFI_HARD_RESET_INTERVAL_MS = 5UL * 60UL * 1000UL;        // full radio off/on cycle if still offline this long since the last one
+static const uint32_t WIFI_RESTART_AFTER_MS       = 3UL * 60UL * 60UL * 1000UL; // reboot if WiFi has been down this long straight (last-resort)
 
 // ---- Per-lamp personalization ----
 // Every value below can be overridden by defining it in secrets.h (same pattern
@@ -139,6 +147,8 @@ String statusTopicSelf;
 String statusTopicOther;
 
 uint32_t lastWifiAttemptMillis = 0;
+uint32_t lastWifiConnectedMillis = 0;  // last millis() WiFi.status() read WL_CONNECTED
+uint32_t lastWifiHardResetMillis = 0;  // last millis() the WiFi radio was fully cycled while offline
 uint32_t lastMqttAttemptMillis = 0;
 uint32_t lastStatusPublishMillis = 0;
 uint32_t lastTouchMillis = 0;
@@ -259,10 +269,36 @@ void setupWiFi() {
 }
 
 void maintainWiFi() {
-  if (WiFi.status() == WL_CONNECTED) return;
   uint32_t now = millis();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    lastWifiConnectedMillis = now;
+    return;
+  }
+
+  // Last resort: WiFi has been down for hours straight. Rather than trust that
+  // any software-level recovery below has actually cleared the driver's state,
+  // just reboot -- the lamp has no state a restart loses, and this guarantees
+  // recovery from whatever multi-day-retry-loop wedge caused the outage.
+  if (now - lastWifiConnectedMillis > WIFI_RESTART_AFTER_MS) {
+    Serial.println("WiFi: no connection for hours straight, restarting...");
+    ESP.restart();
+  }
+
   if (now - lastWifiAttemptMillis < WIFI_RECONNECT_INTERVAL_MS) return;
   lastWifiAttemptMillis = now;
+
+  // Periodically fully power-cycle the WiFi radio (not just disconnect/begin)
+  // before retrying. Long unbroken retry loops can leave the driver's internal
+  // state (scan cache, association state machine) stale enough that plain
+  // retries never rejoin even after the AP comes back -- this clears it out.
+  if (now - lastWifiHardResetMillis > WIFI_HARD_RESET_INTERVAL_MS) {
+    lastWifiHardResetMillis = now;
+    Serial.println("WiFi: cycling radio before retry (stale-state recovery)");
+    WiFi.mode(WIFI_OFF);
+    delay(100);
+    WiFi.mode(WIFI_STA);
+  }
 
   // Non-blocking: kick off a connect to the next usable network and return.
   // The next call (WIFI_RECONNECT_INTERVAL_MS later) checks whether it worked
