@@ -1,4 +1,4 @@
-# Cloud Lamp
+# Blink Cloud
 
 A pair of internet-connected "cloud" lamps for two people in different places. Tap
 the screen on one lamp and the other one lights up.
